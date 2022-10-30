@@ -1,6 +1,10 @@
 # UTF-8 decoder
 
-Rust library to decode UTF-8 "characters" from a stream of bytes.
+Rust library to decode UTF-8 "characters" from a stream of bytes and
+converts them into Rust characters.
+
+The decoder can read from anything which implements
+[`Read`](https://doc.rust-lang.org/std/io/trait.Read.html) trait.
 
 This library only serves educational purposes!
 
