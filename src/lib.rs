@@ -58,7 +58,7 @@ impl<R: Read> Iterator for Utf8Decoder<R> {
                 }
             } else if bytes_remaining_count > 0 {
                 // read continuation bytes
-                if c & 0b1000_0000 == 0b1000_0000 {
+                if c & 0b1100_0000 == 0b1000_0000 {
                     codepoint |= u32::from(c & 0b11_1111) << (6 * (bytes_remaining_count - 1));
                     bytes_remaining_count -= 1;
                 } else {
@@ -139,6 +139,14 @@ mod test {
         let mut utf8_decoder = super::Utf8Decoder::new(&[0xC0, 0xC1][..]);
         assert_eq!(utf8_decoder.next(), Some('�'));
         assert_eq!(utf8_decoder.next(), Some('�'));
+        assert_eq!(utf8_decoder.next(), None);
+    }
+
+    #[test]
+    fn test_decode_utf8_invalid_continuation_byte() {
+        const INVALID_CONTINUATION_BYTE: u8 = b'\xE3';
+        let mut utf8_decoder = super::Utf8Decoder::new(&[b'\xC2', INVALID_CONTINUATION_BYTE][..]);
+        assert_eq!(utf8_decoder.next(), Some(super::REPLACEMENT_CHARACTER));
         assert_eq!(utf8_decoder.next(), None);
     }
 }
