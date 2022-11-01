@@ -92,7 +92,6 @@ mod test {
         assert_eq!(utf8_decoder.next(), None);
 
         let mut utf8_decoder = super::Utf8Decoder::new(&[b'a', b'\xC2', b'\xA3'][..]);
-        eprintln!("£: {:#x}", '£' as u32);
         assert_eq!(utf8_decoder.next(), Some('a'));
         assert_eq!(utf8_decoder.next(), Some('£'));
         assert_eq!(utf8_decoder.next(), None);
