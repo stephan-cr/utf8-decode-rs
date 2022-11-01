@@ -11,6 +11,7 @@ This library only serves educational purposes!
 ## Resources
 
 - https://en.wikipedia.org/wiki/UTF-8
+- https://stackoverflow.com/questions/1319022/really-good-bad-utf-8-example-test-data
 
 ## License
 
