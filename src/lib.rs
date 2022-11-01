@@ -6,6 +6,10 @@
 
 use std::io::{Bytes, Read};
 
+/// The replacement character is returned in case of decoding errors,
+/// as recommended by the Unicode standard.
+const REPLACEMENT_CHARACTER: char = '�';
+
 pub struct Utf8Decoder<R: Read> {
     bytes_iterator: Bytes<R>,
 }
@@ -21,6 +25,8 @@ impl<R: Read> Utf8Decoder<R> {
 impl<R: Read> Iterator for Utf8Decoder<R> {
     type Item = char;
 
+    /// Return the next Unicode character. In case of decoding errors,
+    /// it returns the replacement character (�).
     fn next(&mut self) -> Option<Self::Item> {
         let mut codepoint: u32 = 0;
         let mut bytes_remaining_count = -1;
@@ -35,9 +41,9 @@ impl<R: Read> Iterator for Utf8Decoder<R> {
                 } else if c & 0b1110_0000 == 0b1100_0000 {
                     // 2 byte character
                     if c == 0xC0 || c == 0xC1 {
-                        return Some('�');
+                        return Some(REPLACEMENT_CHARACTER);
                     }
-                    codepoint = u32::from(c & 0b1_1111u8) << 6;
+                    codepoint = u32::from(c & 0b1_1111) << 6;
                     bytes_remaining_count = 1;
                 } else if c & 0b1111_0000 == 0b1110_0000 {
                     // 3 byte character
@@ -48,23 +54,19 @@ impl<R: Read> Iterator for Utf8Decoder<R> {
                     codepoint = u32::from(c & 0b111) << 18;
                     bytes_remaining_count = 3;
                 } else {
-                    // return the replacement character in case of
-                    // errors, as recommended by the standard
-                    return Some('�');
+                    return Some(REPLACEMENT_CHARACTER);
                 }
             } else if bytes_remaining_count > 0 {
-                // continuation bytes
+                // read continuation bytes
                 if c & 0b1000_0000 == 0b1000_0000 {
                     codepoint |= u32::from(c & 0b11_1111) << (6 * (bytes_remaining_count - 1));
                     bytes_remaining_count -= 1;
                 } else {
-                    // return the replacement character in case of
-                    // errors, as recommended by the standard
-                    return Some('�');
+                    return Some(REPLACEMENT_CHARACTER);
                 }
 
                 if bytes_remaining_count == 0 {
-                    // the codepoints in this range are reserved for
+                    // the code points in this range are reserved for
                     // UTF-16 surrogates
                     const SURROGATE_RANGE: std::ops::RangeInclusive<u32> = 0xD800..=0xDFFF;
 
@@ -72,7 +74,7 @@ impl<R: Read> Iterator for Utf8Decoder<R> {
                         return char::from_u32(codepoint);
                     }
 
-                    return Some('�');
+                    return Some(REPLACEMENT_CHARACTER);
                 }
             }
         }
