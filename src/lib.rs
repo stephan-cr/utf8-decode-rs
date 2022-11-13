@@ -4,7 +4,7 @@
 #![warn(rust_2018_idioms)]
 #![warn(clippy::pedantic)]
 
-use std::io::{Bytes, Read};
+use std::io::{Bytes, Error, Read};
 
 /// The replacement character is returned in case of decoding errors,
 /// as recommended by the Unicode standard.
@@ -23,7 +23,7 @@ impl<R: Read> Utf8Decoder<R> {
 }
 
 impl<R: Read> Iterator for Utf8Decoder<R> {
-    type Item = char;
+    type Item = Result<char, Error>;
 
     /// Return the next Unicode character. In case of decoding errors,
     /// it returns the replacement character (�).
@@ -31,17 +31,20 @@ impl<R: Read> Iterator for Utf8Decoder<R> {
         let mut codepoint: u32 = 0;
         let mut bytes_remaining_count = -1;
         for byte in self.bytes_iterator.by_ref() {
-            let c = byte.unwrap();
+            let c = match byte {
+                Ok(v) => v,
+                Err(e) => return Some(Err(e)),
+            };
             if bytes_remaining_count == -1 {
                 // read leading byte
                 if c & 0x80 == 0 {
                     // 1 byte character
                     codepoint = u32::from(c);
-                    return char::from_u32(codepoint);
+                    return Some(Ok(char::from_u32(codepoint).unwrap()));
                 } else if c & 0b1110_0000 == 0b1100_0000 {
                     // 2 byte character
                     if c == 0xC0 || c == 0xC1 {
-                        return Some(REPLACEMENT_CHARACTER);
+                        return Some(Ok(REPLACEMENT_CHARACTER));
                     }
                     codepoint = u32::from(c & 0b1_1111) << 6;
                     bytes_remaining_count = 1;
@@ -54,7 +57,7 @@ impl<R: Read> Iterator for Utf8Decoder<R> {
                     codepoint = u32::from(c & 0b111) << 18;
                     bytes_remaining_count = 3;
                 } else {
-                    return Some(REPLACEMENT_CHARACTER);
+                    return Some(Ok(REPLACEMENT_CHARACTER));
                 }
             } else if bytes_remaining_count > 0 {
                 // read continuation bytes
@@ -62,7 +65,7 @@ impl<R: Read> Iterator for Utf8Decoder<R> {
                     codepoint |= u32::from(c & 0b11_1111) << (6 * (bytes_remaining_count - 1));
                     bytes_remaining_count -= 1;
                 } else {
-                    return Some(REPLACEMENT_CHARACTER);
+                    return Some(Ok(REPLACEMENT_CHARACTER));
                 }
 
                 if bytes_remaining_count == 0 {
@@ -71,10 +74,10 @@ impl<R: Read> Iterator for Utf8Decoder<R> {
                     const SURROGATE_RANGE: std::ops::RangeInclusive<u32> = 0xD800..=0xDFFF;
 
                     if !SURROGATE_RANGE.contains(&codepoint) {
-                        return char::from_u32(codepoint);
+                        return Some(Ok(char::from_u32(codepoint).unwrap()));
                     }
 
-                    return Some(REPLACEMENT_CHARACTER);
+                    return Some(Ok(REPLACEMENT_CHARACTER));
                 }
             }
         }
@@ -85,68 +88,89 @@ impl<R: Read> Iterator for Utf8Decoder<R> {
 
 #[cfg(test)]
 mod test {
+    use assert_matches::assert_matches;
+    use std::io::{Error, ErrorKind, Read, Result};
+
     #[test]
     fn test_decode_utf8_iterator() {
         let mut utf8_decoder = super::Utf8Decoder::new(&[b'a'][..]);
-        assert_eq!(utf8_decoder.next(), Some('a'));
-        assert_eq!(utf8_decoder.next(), None);
+        assert_matches!(utf8_decoder.next(), Some(Ok('a')));
+        assert_matches!(utf8_decoder.next(), None);
 
         let mut utf8_decoder = super::Utf8Decoder::new(&[b'a', b'\xC2', b'\xA3'][..]);
-        assert_eq!(utf8_decoder.next(), Some('a'));
-        assert_eq!(utf8_decoder.next(), Some('£'));
-        assert_eq!(utf8_decoder.next(), None);
+        assert_matches!(utf8_decoder.next(), Some(Ok('a')));
+        assert_matches!(utf8_decoder.next(), Some(Ok('£')));
+        assert_matches!(utf8_decoder.next(), None);
 
         let mut utf8_decoder = super::Utf8Decoder::new(
             &[
                 b'\xE2', b'\x82', b'\xAC', b'\xF0', b'\x90', b'\x8D', b'\x88',
             ][..],
         );
-        assert_eq!(utf8_decoder.next(), Some('€'));
-        assert_eq!(utf8_decoder.next(), Some('\u{10348}'));
-        assert_eq!(utf8_decoder.next(), None);
+        assert_matches!(utf8_decoder.next(), Some(Ok('€')));
+        assert_matches!(utf8_decoder.next(), Some(Ok('\u{10348}')));
+        assert_matches!(utf8_decoder.next(), None);
 
         let invalid_utf8_byte: [u8; 1] = [0xff];
         let mut utf8_decoder = super::Utf8Decoder::new(&invalid_utf8_byte[..]);
-        assert_eq!(utf8_decoder.next(), Some('�'));
-        assert_eq!(utf8_decoder.next(), None);
+        assert_matches!(utf8_decoder.next(), Some(Ok('�')));
+        assert_matches!(utf8_decoder.next(), None);
     }
 
     #[test]
     fn test_decode_utf8_with_utf16_surrogates() {
         // smallest high surrogate
         let mut utf8_decoder = super::Utf8Decoder::new(&[0xED, 0xA0, 0x80][..]);
-        assert_eq!(utf8_decoder.next(), Some('�'));
-        assert_eq!(utf8_decoder.next(), None);
+        assert_matches!(utf8_decoder.next(), Some(Ok('�')));
+        assert_matches!(utf8_decoder.next(), None);
 
         // largest high surrogate
         let mut utf8_decoder = super::Utf8Decoder::new(&[0xED, 0xAF, 0xBF][..]);
-        assert_eq!(utf8_decoder.next(), Some('�'));
-        assert_eq!(utf8_decoder.next(), None);
+        assert_matches!(utf8_decoder.next(), Some(Ok('�')));
+        assert_matches!(utf8_decoder.next(), None);
 
         //  smallest low surrogate
         let mut utf8_decoder = super::Utf8Decoder::new(&[0xED, 0xB0, 0x80][..]);
-        assert_eq!(utf8_decoder.next(), Some('�'));
-        assert_eq!(utf8_decoder.next(), None);
+        assert_matches!(utf8_decoder.next(), Some(Ok('�')));
+        assert_matches!(utf8_decoder.next(), None);
 
         // largest low surrogate
         let mut utf8_decoder = super::Utf8Decoder::new(&[0xED, 0xBF, 0xBF][..]);
-        assert_eq!(utf8_decoder.next(), Some('�'));
-        assert_eq!(utf8_decoder.next(), None);
+        assert_matches!(utf8_decoder.next(), Some(Ok('�')));
+        assert_matches!(utf8_decoder.next(), None);
     }
 
     #[test]
     fn test_decode_utf8_invalid_bytes() {
         let mut utf8_decoder = super::Utf8Decoder::new(&[0xC0, 0xC1][..]);
-        assert_eq!(utf8_decoder.next(), Some('�'));
-        assert_eq!(utf8_decoder.next(), Some('�'));
-        assert_eq!(utf8_decoder.next(), None);
+        assert_matches!(utf8_decoder.next(), Some(Ok('�')));
+        assert_matches!(utf8_decoder.next(), Some(Ok('�')));
+        assert_matches!(utf8_decoder.next(), None);
     }
 
     #[test]
     fn test_decode_utf8_invalid_continuation_byte() {
         const INVALID_CONTINUATION_BYTE: u8 = b'\xE3';
         let mut utf8_decoder = super::Utf8Decoder::new(&[b'\xC2', INVALID_CONTINUATION_BYTE][..]);
-        assert_eq!(utf8_decoder.next(), Some(super::REPLACEMENT_CHARACTER));
-        assert_eq!(utf8_decoder.next(), None);
+        assert_matches!(utf8_decoder.next(), Some(Ok(super::REPLACEMENT_CHARACTER)));
+        assert_matches!(utf8_decoder.next(), None);
+    }
+
+    struct BrokenPipeReader {}
+
+    impl Read for BrokenPipeReader {
+        fn read(&mut self, _buf: &mut [u8]) -> Result<usize> {
+            Err(Error::from(ErrorKind::BrokenPipe))
+        }
+    }
+
+    #[test]
+    fn test_error_broken_pipe() {
+        let r = BrokenPipeReader {};
+        let mut rc = super::Utf8Decoder::new(r);
+
+        assert_matches!(rc.next(), Some(Err(e)) => {
+            assert_eq!(e.kind(), ErrorKind::BrokenPipe);
+        } );
     }
 }
