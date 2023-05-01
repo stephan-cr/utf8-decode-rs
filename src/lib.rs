@@ -5,6 +5,7 @@
 #![warn(clippy::pedantic)]
 
 use std::io::{Bytes, Error, Read};
+use std::ops::RangeInclusive;
 
 /// The replacement character is returned in case of decoding errors,
 /// as recommended by the Unicode standard.
@@ -69,9 +70,9 @@ impl<R: Read> Iterator for Utf8Decoder<R> {
                 }
 
                 if bytes_remaining_count == 0 {
-                    // the code points in this range are reserved for
-                    // UTF-16 surrogates
-                    const SURROGATE_RANGE: std::ops::RangeInclusive<u32> = 0xD800..=0xDFFF;
+                    // the code points in the following range are
+                    // reserved for UTF-16 surrogates
+                    const SURROGATE_RANGE: RangeInclusive<u32> = 0xD800..=0xDFFF;
 
                     if !SURROGATE_RANGE.contains(&codepoint) {
                         return Some(Ok(char::from_u32(codepoint).unwrap()));

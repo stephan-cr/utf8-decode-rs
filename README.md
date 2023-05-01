@@ -13,6 +13,7 @@ This library only serves educational purposes!
 
 - https://en.wikipedia.org/wiki/UTF-8
 - https://stackoverflow.com/questions/1319022/really-good-bad-utf-8-example-test-data
+- https://www.cl.cam.ac.uk/~mgk25/ucs/examples/UTF-8-test.txt
 
 ## License
 
