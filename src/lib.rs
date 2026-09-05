@@ -92,6 +92,8 @@ mod test {
     use assert_matches::assert_matches;
     use std::io::{Error, ErrorKind, Read, Result};
 
+    use std::iter::Iterator;
+
     #[test]
     fn test_decode_utf8_iterator() {
         let mut utf8_decoder = super::Utf8Decoder::new(&[b'a'][..]);
@@ -173,5 +175,17 @@ mod test {
         assert_matches!(rc.next(), Some(Err(e)) => {
             assert_eq!(e.kind(), ErrorKind::BrokenPipe);
         } );
+    }
+
+    #[test]
+    fn test_farmer_emoji() {
+        let mut utf8_decoder = super::Utf8Decoder::new(
+            &[
+                0xF0, 0x9F, 0x91, 0xA8, 0xE2, 0x80, 0x8D, 0xF0, 0x9F, 0x8C, 0xBE,
+            ][..],
+        );
+
+        assert!(utf8_decoder.next().is_some());
+        assert!(utf8_decoder.next().is_some());
     }
 }
